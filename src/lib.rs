@@ -3,19 +3,141 @@ use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
 
+#[derive(Debug, PartialEq)]
+enum Operation {
+    End,
+    Add,
+    Mul,
+    Input,
+    Output,
+    JumpNotEq,
+    JumpEq,
+    LessThan,
+    EqualTo,
+    RelBase,
+}
+
+#[derive(Debug, PartialEq)]
+enum Mode {
+    Pointer,
+    Value,
+    Relative,
+}
+
+type Cell = u32;
+
+trait Instruction {
+    fn op(&self) -> Operation;
+    fn modes(&self) -> Vec<Mode>;
+}
+
+impl Instruction for Cell {
+    fn op(&self) -> Operation {
+        match self%100 {
+            99 => Operation::End,
+            1 => Operation::Add,
+            2 => Operation::Mul,
+            3 => Operation::Input,
+            4 => Operation::Output,
+            5 => Operation::JumpNotEq,
+            6 => Operation::JumpEq,
+            7 => Operation::LessThan,
+            8 => Operation::EqualTo,
+            9 => Operation::RelBase,
+            i => panic!["unknown Instruction {}",i]
+        }
+    }
+
+    fn modes(&self) -> Vec<Mode> {
+        let mut m:Vec<Mode> = Vec::new();
+        let mut r = self / 100;
+        for _ in 0..3 {
+            m.push(match r%10 {
+                0 => Mode::Pointer,
+                1 => Mode::Value,
+                2 => Mode::Relative,
+                _ => panic!["unknown mode {}",r]
+            });
+            r = r/10;
+        }
+        m
+    }
+}
+
+#[cfg(test)]
+mod test_instruction {
+    use super::*;
+
+    #[test]
+    fn test_op_end() {
+        let cells:Vec<Cell> = vec![99, 1099, 11199];
+        for c in cells {
+            assert_eq!(c.op(), Operation::End, "cell value: {}", c);
+        }
+    }
+
+    #[test]
+    fn test_op_add() {
+        let cells:Vec<Cell> = vec![1, 101, 11101];
+        for c in cells {
+            assert_eq!(c.op(), Operation::Add, "cell value: {}", c);
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_op_other() {
+        let c:Cell = 10;
+        c.op();
+    }
+
+    #[test]
+    fn test_modes_000() {
+        let c:Cell = 99;
+        assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Pointer])
+    }
+
+    #[test]
+    fn test_modes_001() {
+        let c:Cell = 199;
+        assert_eq!(c.modes(), vec![Mode::Value, Mode::Pointer, Mode::Pointer])
+    }
+
+    #[test]
+    fn test_modes_100() {
+        let c:Cell = 10001;
+        assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Value])
+    }
+
+    #[test]
+    fn test_modes_102() {
+        let c:Cell = 10209;
+        assert_eq!(c.modes(), vec![Mode::Relative, Mode::Pointer, Mode::Value])
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_modes_other() {
+        let c:Cell = 399;
+        c.modes();
+    }
+
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Intcode {
-    code: Vec<u32>,
-    mem: HashMap<usize, u32>,
-    rel_base: u32,
+    code: Vec<Cell>,
+    mem: HashMap<usize, Cell>,
+    rel_base: usize,
 }
 
 /// Read intcode from reader.
-fn read_code<R: BufRead>(reader: R) -> Result<Vec<u32>,io::Error> {
-    let mut c: Vec<u32> = Vec::new();
+fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>,io::Error> {
+    let mut c: Vec<Cell> = Vec::new();
     for l in reader.lines() {
         for s in l?.split(',') {
-            match u32::from_str(s) {
+            match Cell::from_str(s) {
                 Ok(n) => c.push(n),
                 Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData,error)),
             };
@@ -56,7 +178,7 @@ impl Intcode {
 
 
 #[cfg(test)]
-mod tests {
+mod test_intcode {
     use super::*;
     use super::Intcode;
     use std::io;
