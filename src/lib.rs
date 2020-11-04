@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
 
@@ -9,14 +10,17 @@ pub struct Intcode {
     rel_base: u32,
 }
 
-fn read_code<R: BufRead>(reader: R) -> Option<Vec<u32>> {
+fn read_code<R: BufRead>(reader: R) -> Result<Vec<u32>,io::Error> {
     let mut c: Vec<u32> = Vec::new();
     for l in reader.lines() {
-        for s in l.ok()?.split(',') {
-            c.push(u32::from_str(s).ok()?)
+        for s in l?.split(',') {
+            match u32::from_str(s) {
+                Ok(n) => c.push(n),
+                Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData,error)),
+            };
         }
     }
-    Some(c)
+    Ok(c)
     // tried to do it functionally, too hard to propogate errors!
     // leaving this here in case I learn there's an easy way to do it.
     //reader.lines().
@@ -43,24 +47,25 @@ impl Intcode {
 mod tests {
     use super::*;
     use super::Intcode;
-    use std::io::Cursor;
+    use std::io;
 
     #[test]
     fn test_read_code() {
-        let code = Cursor::new("1,0,0,3,1,1");
+        let code = io::Cursor::new("1,0,0,3,1,1");
         let r = vec![1,0,0,3,1,1];
         assert_eq!(read_code(code).unwrap(),r)
     }
 
     #[test]
     fn test_read_code_error() {
-        let code = Cursor::new("1,0,a,3,1,1");
-        assert_eq!(read_code(code), None)
+        let code = io::Cursor::new("1,0,a,3,1,1");
+        assert_eq!(read_code(code).map_err(|e| e.kind()),
+                   Err(io::ErrorKind::InvalidData))
     }
 
     #[test]
     fn test_new() {
-        let code = Cursor::new("1,0,0,3,1,1");
+        let code = io::Cursor::new("1,0,0,3,1,1");
         let r = vec![1,0,0,3,1,1];
         let ic = Intcode::new(code);
         assert_eq!(ic.code,r)
