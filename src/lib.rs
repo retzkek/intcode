@@ -24,6 +24,7 @@ enum Mode {
     Relative,
 }
 
+type Address = usize;
 type Cell = u32;
 
 trait Instruction {
@@ -128,8 +129,8 @@ mod test_instruction {
 #[derive(Debug, Clone)]
 pub struct Intcode {
     code: Vec<Cell>,
-    mem: HashMap<usize, Cell>,
-    rel_base: usize,
+    mem: HashMap<Address, Cell>,
+    rel_base: Address,
 }
 
 /// Read intcode from reader.
@@ -154,7 +155,7 @@ fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>,io::Error> {
 }
 
 /// Copy Vec to HashMap, where each element's index is its key.
-fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<usize,T> {
+fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<Address,T> {
     let mut m = HashMap::new();
     for (k,v) in (0..).zip(code.iter()) {
         m.insert(k,v.clone());
@@ -172,6 +173,14 @@ impl Intcode {
             mem: v,
             rel_base: 0,
         }
+    }
+
+    pub fn peek(&self, addr:Address) -> Cell {
+       self.mem[&addr]
+    }
+
+    pub fn poke(&mut self, addr:Address, value:Cell) -> Option<Cell> {
+       self.mem.insert(addr, value)
     }
 
 }
@@ -224,5 +233,21 @@ mod test_intcode {
         exp.insert(2,0);
         exp.insert(3,3);
         assert_eq!(vec_to_map(&r),exp);
+    }
+
+    #[test]
+    fn test_peek() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let ic = Intcode::new(code);
+        assert_eq!(ic.peek(3), 3);
+    }
+
+    #[test]
+    fn test_poke() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let mut ic = Intcode::new(code);
+        assert_eq!(ic.peek(3), 3);
+        assert_eq!(ic.poke(3, 5).unwrap(), 3);
+        assert_eq!(ic.peek(3), 5);
     }
 }
