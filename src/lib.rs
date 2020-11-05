@@ -160,7 +160,10 @@ fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<u32, T> {
 
 impl Intcode {
     pub fn new<R: BufRead>(reader: R) -> Intcode {
-        let c = read_code(reader).unwrap();
+        let c = match read_code(reader) {
+            Ok(x) => x,
+            Err(error) => panic!["{:}",error],
+        };
         let v = vec_to_map(&c);
         Intcode {
             code: c,
@@ -193,22 +196,31 @@ impl Intcode {
         }
     }
 
-    pub fn exe(&mut self, addr:u32) {
+    pub fn exe(&mut self, addr: u32) {
         let mut addr = addr;
         loop {
-            println!["{}: {}",addr,self.peek(addr)];
+            //println!["{}: {}", addr, self.peek(addr)];
             let v = self.peek(addr);
             let op = v.op();
             let modes = v.modes();
             match op {
                 Operation::End => break,
                 Operation::Add => {
-                    self.poke(self.paddr(&modes[2], self.peek(addr+3)),
-                              self.pval(&modes[0], self.peek(addr+1)) +
-                              self.pval(&modes[1], self.peek(addr+2)));
+                    self.poke(
+                        self.paddr(&modes[2], self.peek(addr + 3)),
+                        self.pval(&modes[0], self.peek(addr + 1))
+                            + self.pval(&modes[1], self.peek(addr + 2)),
+                    );
                     addr += 4;
-                },
-                Operation::Mul => addr += 4,
+                }
+                Operation::Mul => {
+                    self.poke(
+                        self.paddr(&modes[2], self.peek(addr + 3)),
+                        self.pval(&modes[0], self.peek(addr + 1))
+                            * self.pval(&modes[1], self.peek(addr + 2)),
+                    );
+                    addr += 4;
+                }
                 Operation::Input => addr += 2,
                 Operation::Output => addr += 2,
                 Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
