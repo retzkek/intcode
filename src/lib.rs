@@ -122,7 +122,7 @@ mod test_instruction {
 }
 
 #[derive(Debug, Clone)]
-pub struct Intcode {
+pub struct Program {
     code: Vec<u32>,
     mem: HashMap<u32, u32>,
     rel_base: u32,
@@ -158,14 +158,14 @@ fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<u32, T> {
     m
 }
 
-impl Intcode {
-    pub fn new<R: BufRead>(reader: R) -> Intcode {
+impl Program {
+    pub fn new<R: BufRead>(reader: R) -> Program {
         let c = match read_code(reader) {
             Ok(x) => x,
             Err(error) => panic!["{:}",error],
         };
         let v = vec_to_map(&c);
-        Intcode {
+        Program {
             code: c,
             mem: v,
             rel_base: 0,
@@ -235,7 +235,7 @@ impl Intcode {
 
 #[cfg(test)]
 mod test_intcode {
-    use super::Intcode;
+    use super::Program;
     use super::*;
     use std::io;
 
@@ -258,7 +258,7 @@ mod test_intcode {
     #[test]
     fn test_new() {
         let code = io::Cursor::new("1,0,0,3,1,1");
-        let ic = Intcode::new(code);
+        let ic = Program::new(code);
 
         let cv = vec![1, 0, 0, 3, 1, 1];
         assert_eq!(ic.code, cv);
@@ -287,14 +287,14 @@ mod test_intcode {
     #[test]
     fn test_peek() {
         let code = io::Cursor::new("1,0,0,3,1,1");
-        let ic = Intcode::new(code);
+        let ic = Program::new(code);
         assert_eq!(ic.peek(3), 3);
     }
 
     #[test]
     fn test_poke() {
         let code = io::Cursor::new("1,0,0,3,1,1");
-        let mut ic = Intcode::new(code);
+        let mut ic = Program::new(code);
         assert_eq!(ic.peek(3), 3);
         assert_eq!(ic.poke(3, 5).unwrap(), 3);
         assert_eq!(ic.peek(3), 5);
@@ -303,7 +303,7 @@ mod test_intcode {
     #[test]
     fn test_pval() {
         let code = io::Cursor::new("1,0,0,3,1,1");
-        let mut ic = Intcode::new(code);
+        let mut ic = Program::new(code);
         assert_eq!(ic.pval(&Mode::Pointer, 4), 1);
         assert_eq!(ic.pval(&Mode::Value, 4), 4);
         assert_eq!(ic.pval(&Mode::Relative, 3), 3);
@@ -314,7 +314,7 @@ mod test_intcode {
     #[test]
     fn test_paddr() {
         let code = io::Cursor::new("1,0,0,3,1,1");
-        let mut ic = Intcode::new(code);
+        let mut ic = Program::new(code);
         assert_eq!(ic.paddr(&Mode::Pointer, 4), 4);
         assert_eq!(ic.paddr(&Mode::Relative, 3), 3);
         ic.rel_base = 1;
