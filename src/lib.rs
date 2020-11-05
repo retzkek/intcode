@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
@@ -25,15 +24,12 @@ enum Mode {
     Relative,
 }
 
-type Address = usize;
-type Cell = u32;
-
 trait Instruction {
     fn op(&self) -> Operation;
     fn modes(&self) -> Vec<Mode>;
 }
 
-impl Instruction for Cell {
+impl Instruction for u32 {
     fn op(&self) -> Operation {
         match self % 100 {
             99 => Operation::End,
@@ -72,7 +68,7 @@ mod test_instruction {
 
     #[test]
     fn test_op_end() {
-        let cells: Vec<Cell> = vec![99, 1099, 11199];
+        let cells: Vec<u32> = vec![99, 1099, 11199];
         for c in cells {
             assert_eq!(c.op(), Operation::End, "cell value: {}", c);
         }
@@ -80,7 +76,7 @@ mod test_instruction {
 
     #[test]
     fn test_op_add() {
-        let cells: Vec<Cell> = vec![1, 101, 11101];
+        let cells: Vec<u32> = vec![1, 101, 11101];
         for c in cells {
             assert_eq!(c.op(), Operation::Add, "cell value: {}", c);
         }
@@ -89,55 +85,55 @@ mod test_instruction {
     #[test]
     #[should_panic]
     fn test_op_other() {
-        let c: Cell = 10;
+        let c: u32 = 10;
         c.op();
     }
 
     #[test]
     fn test_modes_000() {
-        let c: Cell = 99;
+        let c: u32 = 99;
         assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Pointer])
     }
 
     #[test]
     fn test_modes_001() {
-        let c: Cell = 199;
+        let c: u32 = 199;
         assert_eq!(c.modes(), vec![Mode::Value, Mode::Pointer, Mode::Pointer])
     }
 
     #[test]
     fn test_modes_100() {
-        let c: Cell = 10001;
+        let c: u32 = 10001;
         assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Value])
     }
 
     #[test]
     fn test_modes_102() {
-        let c: Cell = 10209;
+        let c: u32 = 10209;
         assert_eq!(c.modes(), vec![Mode::Relative, Mode::Pointer, Mode::Value])
     }
 
     #[test]
     #[should_panic]
     fn test_modes_other() {
-        let c: Cell = 399;
+        let c: u32 = 399;
         c.modes();
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Intcode {
-    code: Vec<Cell>,
-    mem: HashMap<Address, Cell>,
-    rel_base: Address,
+    code: Vec<u32>,
+    mem: HashMap<u32, u32>,
+    rel_base: u32,
 }
 
 /// Read intcode from reader.
-fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>, io::Error> {
-    let mut c: Vec<Cell> = Vec::new();
+fn read_code<R: BufRead>(reader: R) -> Result<Vec<u32>, io::Error> {
+    let mut c: Vec<u32> = Vec::new();
     for l in reader.lines() {
         for s in l?.split(',') {
-            match Cell::from_str(s) {
+            match u32::from_str(s) {
                 Ok(n) => c.push(n),
                 Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
             };
@@ -154,7 +150,7 @@ fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>, io::Error> {
 }
 
 /// Copy Vec to HashMap, where each element's index is its key.
-fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<Address, T> {
+fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<u32, T> {
     let mut m = HashMap::new();
     for (k, v) in (0..).zip(code.iter()) {
         m.insert(k, v.clone());
@@ -173,27 +169,54 @@ impl Intcode {
         }
     }
 
-    pub fn peek(&self, addr: Address) -> Cell {
-        self.mem[&addr]
+    pub fn peek(&self, addr: u32) -> u32 {
+        *self.mem.get(&addr).unwrap()
     }
 
-    pub fn poke(&mut self, addr: Address, value: Cell) -> Option<Cell> {
+    pub fn poke(&mut self, addr: u32, value: u32) -> Option<u32> {
         self.mem.insert(addr, value)
     }
 
-    fn pval(&self, mode: Mode, addr: Address) -> Cell {
+    fn pval(&self, mode: &Mode, addr: u32) -> u32 {
         match mode {
             Mode::Pointer => self.peek(addr),
-            Mode::Value => addr.try_into().unwrap(),
+            Mode::Value => addr,
             Mode::Relative => self.peek(addr + self.rel_base),
         }
     }
 
-    fn paddr(&self, mode: Mode, addr: Address) -> Address {
+    fn paddr(&self, mode: &Mode, addr: u32) -> u32 {
         match mode {
             Mode::Pointer => addr,
             Mode::Value => panic!["Value mode not valid for address"],
             Mode::Relative => addr + self.rel_base,
+        }
+    }
+
+    pub fn exe(&mut self, addr:u32) {
+        let mut addr = addr;
+        loop {
+            println!["{}: {}",addr,self.peek(addr)];
+            let v = self.peek(addr);
+            let op = v.op();
+            let modes = v.modes();
+            match op {
+                Operation::End => break,
+                Operation::Add => {
+                    self.poke(self.paddr(&modes[2], self.peek(addr+3)),
+                              self.pval(&modes[0], self.peek(addr+1)) +
+                              self.pval(&modes[1], self.peek(addr+2)));
+                    addr += 4;
+                },
+                Operation::Mul => addr += 4,
+                Operation::Input => addr += 2,
+                Operation::Output => addr += 2,
+                Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
+                Operation::JumpEq => panic!["JumpEq not implemented"],
+                Operation::LessThan => addr += 4,
+                Operation::EqualTo => addr += 4,
+                Operation::RelBase => addr += 2,
+            }
         }
     }
 }
@@ -269,20 +292,20 @@ mod test_intcode {
     fn test_pval() {
         let code = io::Cursor::new("1,0,0,3,1,1");
         let mut ic = Intcode::new(code);
-        assert_eq!(ic.pval(Mode::Pointer, 4), 1);
-        assert_eq!(ic.pval(Mode::Value, 4), 4);
-        assert_eq!(ic.pval(Mode::Relative, 3), 3);
+        assert_eq!(ic.pval(&Mode::Pointer, 4), 1);
+        assert_eq!(ic.pval(&Mode::Value, 4), 4);
+        assert_eq!(ic.pval(&Mode::Relative, 3), 3);
         ic.rel_base = 1;
-        assert_eq!(ic.pval(Mode::Relative, 3), 1);
+        assert_eq!(ic.pval(&Mode::Relative, 3), 1);
     }
 
     #[test]
     fn test_paddr() {
         let code = io::Cursor::new("1,0,0,3,1,1");
         let mut ic = Intcode::new(code);
-        assert_eq!(ic.paddr(Mode::Pointer, 4), 4);
-        assert_eq!(ic.paddr(Mode::Relative, 3), 3);
+        assert_eq!(ic.paddr(&Mode::Pointer, 4), 4);
+        assert_eq!(ic.paddr(&Mode::Relative, 3), 3);
         ic.rel_base = 1;
-        assert_eq!(ic.paddr(Mode::Relative, 3), 4);
+        assert_eq!(ic.paddr(&Mode::Relative, 3), 4);
     }
 }
