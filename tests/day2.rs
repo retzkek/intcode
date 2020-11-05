@@ -4,8 +4,9 @@ extern crate intcode;
 use std::io;
 use std::fs::File;
 
-fn main() -> io::Result<()> {
-    let f = File::open("input/day2.int")?;
+#[test]
+fn main() {
+    let f = File::open("input/day2.int").unwrap();
     let reader = io::BufReader::new(f);
     let mut ic = intcode::Program::new(reader);
 
@@ -17,6 +18,5 @@ fn main() -> io::Result<()> {
     ic.exe(0);
 
     // What value is left at position 0 after the program halts?
-    println!["{}",ic.peek(0)];
-    Ok(())
+    assert_eq![ic.peek(0), 4462686];
 }
