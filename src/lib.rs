@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
@@ -25,17 +24,25 @@ enum Mode {
     Relative,
 }
 
-type Address = usize;
-type Cell = u32;
+#[derive(Debug, Clone, Copy)]
+struct Address(usize);
 
-trait Instruction {
-    fn op(&self) -> Operation;
-    fn modes(&self) -> Vec<Mode>;
+impl Address {
+    pub fn as_cell(&self) -> Cell {
+        Cell(self.0)
+    }
 }
 
-impl Instruction for Cell {
-    fn op(&self) -> Operation {
-        match self % 100 {
+#[derive(Debug, Clone, Copy)]
+struct Cell(usize);
+
+impl Cell {
+     pub fn as_address(&self) -> Address {
+         Address(self.0)
+     }
+
+    pub fn op(&self) -> Operation {
+        match self.0 % 100 {
             99 => Operation::End,
             1 => Operation::Add,
             2 => Operation::Mul,
@@ -50,9 +57,9 @@ impl Instruction for Cell {
         }
     }
 
-    fn modes(&self) -> Vec<Mode> {
+    pub fn modes(&self) -> Vec<Mode> {
         let mut m: Vec<Mode> = Vec::new();
-        let mut r = self / 100;
+        let mut r = self.0 / 100;
         for _ in 0..3 {
             m.push(match r % 10 {
                 0 => Mode::Pointer,
@@ -137,8 +144,8 @@ fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>, io::Error> {
     let mut c: Vec<Cell> = Vec::new();
     for l in reader.lines() {
         for s in l?.split(',') {
-            match Cell::from_str(s) {
-                Ok(n) => c.push(n),
+            match usize::from_str(s) {
+                Ok(n) => c.push(Cell(n)),
                 Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
             };
         }
@@ -157,7 +164,7 @@ fn read_code<R: BufRead>(reader: R) -> Result<Vec<Cell>, io::Error> {
 fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<Address, T> {
     let mut m = HashMap::new();
     for (k, v) in (0..).zip(code.iter()) {
-        m.insert(k, v.clone());
+        m.insert(k, v);
     }
     m
 }
@@ -173,27 +180,54 @@ impl Intcode {
         }
     }
 
-    pub fn peek(&self, addr: Address) -> Cell {
-        self.mem[&addr]
+    pub fn peek(&self, addr: &Address) -> Option<&Cell>{
+        self.mem.get(addr)
     }
 
     pub fn poke(&mut self, addr: Address, value: Cell) -> Option<Cell> {
         self.mem.insert(addr, value)
     }
 
-    fn pval(&self, mode: Mode, addr: Address) -> Cell {
+    fn pval(&self, mode: &Mode, addr: &Address) -> Cell {
         match mode {
-            Mode::Pointer => self.peek(addr),
-            Mode::Value => addr.try_into().unwrap(),
-            Mode::Relative => self.peek(addr + self.rel_base),
+            Mode::Pointer => *self.peek(addr).unwrap(),
+            Mode::Value => addr.as_cell(),
+            Mode::Relative => *self.peek(addr + self.rel_base).unwrap(),
         }
     }
 
-    fn paddr(&self, mode: Mode, addr: Address) -> Address {
+    fn paddr(&self, mode: &Mode, addr: &Address) -> Address {
         match mode {
-            Mode::Pointer => addr,
+            Mode::Pointer => *addr,
             Mode::Value => panic!["Value mode not valid for address"],
-            Mode::Relative => addr + self.rel_base,
+            Mode::Relative => *addr + self.rel_base,
+        }
+    }
+
+    pub fn exe(&mut self, addr:Address) {
+        let mut addr = addr;
+        loop {
+            println!["{}: {}",addr,self.peek(addr).unwrap()];
+            let v = self.peek(addr).unwrap();
+            let op = v.op();
+            let modes = v.modes();
+            match op {
+                Operation::End => break,
+                Operation::Add => {
+                    self.poke(self.paddr(&modes[2], &self.peek(addr+3).unwrap().as_address()),
+                              self.pval(&modes[0], &self.peek(addr+1).unwrap().as_address()) +
+                              self.pval(&modes[1], &self.peek(addr+2).unwrap().as_address()));
+                    addr += 4;
+                },
+                Operation::Mul => addr += 4,
+                Operation::Input => addr += 2,
+                Operation::Output => addr += 2,
+                Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
+                Operation::JumpEq => panic!["JumpEq not implemented"],
+                Operation::LessThan => addr += 4,
+                Operation::EqualTo => addr += 4,
+                Operation::RelBase => addr += 2,
+            }
         }
     }
 }
@@ -253,16 +287,24 @@ mod test_intcode {
     fn test_peek() {
         let code = io::Cursor::new("1,0,0,3,1,1");
         let ic = Intcode::new(code);
-        assert_eq!(ic.peek(3), 3);
+        assert_eq!(*ic.peek(3).unwrap(), 3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_peek_invalid() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let ic = Intcode::new(code);
+        ic.peek(6).unwrap();
     }
 
     #[test]
     fn test_poke() {
         let code = io::Cursor::new("1,0,0,3,1,1");
         let mut ic = Intcode::new(code);
-        assert_eq!(ic.peek(3), 3);
+        assert_eq!(*ic.peek(3).unwrap(), 3);
         assert_eq!(ic.poke(3, 5).unwrap(), 3);
-        assert_eq!(ic.peek(3), 5);
+        assert_eq!(*ic.peek(3).unwrap(), 5);
     }
 
     #[test]
