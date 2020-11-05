@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
+use std::convert::TryInto;
 
 #[derive(Debug, PartialEq)]
 enum Operation {
@@ -183,6 +184,22 @@ impl Intcode {
        self.mem.insert(addr, value)
     }
 
+    fn pval(&self, mode:Mode, addr:Address) -> Cell {
+        match mode {
+            Mode::Pointer => self.peek(addr),
+            Mode::Value => addr.try_into().unwrap(),
+            Mode::Relative => self.peek(addr + self.rel_base),
+        }
+    }
+
+    fn paddr(&self, mode:Mode, addr:Address) -> Address {
+        match mode {
+            Mode::Pointer => addr,
+            Mode::Value => panic!["Value mode not valid for address"],
+            Mode::Relative => addr + self.rel_base,
+        }
+    }
+
 }
 
 
@@ -249,5 +266,26 @@ mod test_intcode {
         assert_eq!(ic.peek(3), 3);
         assert_eq!(ic.poke(3, 5).unwrap(), 3);
         assert_eq!(ic.peek(3), 5);
+    }
+
+    #[test]
+    fn test_pval() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let mut ic = Intcode::new(code);
+        assert_eq!(ic.pval(Mode::Pointer,4), 1);
+        assert_eq!(ic.pval(Mode::Value,4), 4);
+        assert_eq!(ic.pval(Mode::Relative,3), 3);
+        ic.rel_base=1;
+        assert_eq!(ic.pval(Mode::Relative,3), 1);
+    }
+
+    #[test]
+    fn test_paddr() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let mut ic = Intcode::new(code);
+        assert_eq!(ic.paddr(Mode::Pointer,4), 4);
+        assert_eq!(ic.paddr(Mode::Relative,3), 3);
+        ic.rel_base=1;
+        assert_eq!(ic.paddr(Mode::Relative,3), 4);
     }
 }
