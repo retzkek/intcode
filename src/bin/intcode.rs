@@ -24,6 +24,9 @@ struct CommandRun {
     /// source code file
     filename: String,
     #[argh(switch)]
+    /// trace program execution
+    trace: bool,
+    #[argh(switch)]
     /// print final memory status
     print: bool,
 }
@@ -35,7 +38,7 @@ fn main() -> io::Result<()> {
             let f = File::open(r.filename)?;
             let reader = io::BufReader::new(f);
             let mut prog = intcode::Program::new(reader);
-            prog.exe(0);
+            prog.exe(0, r.trace);
             if r.print {
                 println!["{}", prog];
             }

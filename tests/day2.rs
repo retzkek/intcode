@@ -15,7 +15,7 @@ fn main() {
     ic.poke(1, 12);
     ic.poke(2, 2);
 
-    ic.exe(0);
+    ic.exe(0, false);
 
     // What value is left at position 0 after the program halts?
     assert_eq![ic.peek(0), 4462686];

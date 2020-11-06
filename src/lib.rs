@@ -193,13 +193,15 @@ impl Program {
         }
     }
 
-    pub fn exe(&mut self, addr: Int) {
+    pub fn exe(&mut self, addr: Int, trace: bool) {
         let mut addr = addr;
         loop {
-            //println!["{}: {}", addr, self.peek(addr)];
             let v = self.peek(addr);
             let op = v.op();
             let modes = v.modes();
+            if trace {
+                println!["{}: {} ({:?})", addr, v, op];
+            }
             match op {
                 Operation::End => break,
                 Operation::Add => {
