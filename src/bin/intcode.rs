@@ -23,10 +23,10 @@ struct CommandRun {
     #[argh(positional)]
     /// source code file
     filename: String,
-    #[argh(switch)]
+    #[argh(switch, short = 't')]
     /// trace program execution
     trace: bool,
-    #[argh(switch)]
+    #[argh(switch, short = 'p')]
     /// print final memory status
     print: bool,
 }
@@ -38,7 +38,7 @@ fn main() -> io::Result<()> {
             let f = File::open(r.filename)?;
             let reader = io::BufReader::new(f);
             let mut prog = intcode::Program::new(reader);
-            prog.exe(0, r.trace);
+            prog.exe(0, r.trace, io::stdin().lock())?;
             if r.print {
                 println!["{}", prog];
             }

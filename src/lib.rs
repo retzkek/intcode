@@ -126,9 +126,7 @@ mod test_instruction {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Program {
-    code: Vec<Int>,
     mem: Vec<Int>,
     rel_base: Int,
 }
@@ -140,7 +138,6 @@ impl Program {
             Err(error) => panic!["{:}", error],
         };
         Program {
-            code: c.clone(),
             mem: c,
             rel_base: 0,
         }
@@ -193,8 +190,9 @@ impl Program {
         }
     }
 
-    pub fn exe(&mut self, addr: Int, trace: bool) {
+    pub fn exe<I: BufRead>(&mut self, addr: Int, trace: bool, input: I) -> io::Result<()> {
         let mut addr = addr;
+        let mut input_lines = input.lines();
         loop {
             let v = self.peek(addr);
             let op = v.op();
@@ -211,7 +209,7 @@ impl Program {
                             + self.pval(&modes[1], self.peek(addr + 2)),
                     );
                     addr += 4;
-                }
+                },
                 Operation::Mul => {
                     self.poke(
                         self.paddr(&modes[2], self.peek(addr + 3)),
@@ -219,8 +217,18 @@ impl Program {
                             * self.pval(&modes[1], self.peek(addr + 2)),
                     );
                     addr += 4;
-                }
-                Operation::Input => addr += 2,
+                },
+                Operation::Input => {
+                    let s = input_lines.next()
+                                       .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no more data to read"))??;
+                    self.poke(
+                        self.paddr(&modes[0], self.peek(addr + 1)),
+                        match Int::from_str(&s) {
+                        Ok(n) => n,
+                        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+                    });
+                    addr += 2;
+                },
                 Operation::Output => addr += 2,
                 Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
                 Operation::JumpEq => panic!["JumpEq not implemented"],
@@ -229,6 +237,7 @@ impl Program {
                 Operation::RelBase => addr += 2,
             }
         }
+        Ok(())
     }
 }
 
@@ -266,7 +275,6 @@ mod test_intcode {
         let ic = Program::new(code);
 
         let cv = vec![1, 0, 0, 3, 1, 1];
-        assert_eq!(ic.code, cv);
         assert_eq!(ic.mem, cv);
     }
 
