@@ -162,7 +162,7 @@ impl Program {
     pub fn new<R: BufRead>(reader: R) -> Program {
         let c = match read_code(reader) {
             Ok(x) => x,
-            Err(error) => panic!["{:}",error],
+            Err(error) => panic!["{:}", error],
         };
         let v = vec_to_map(&c);
         Program {

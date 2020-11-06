@@ -1,8 +1,8 @@
 //! AoC 2019 day 2: https://adventofcode.com/2019/day/2
 
 extern crate intcode;
-use std::io;
 use std::fs::File;
+use std::io;
 
 #[test]
 fn main() {
@@ -12,8 +12,8 @@ fn main() {
 
     // before running the program, replace position 1 with the value 12 and
     // replace position 2 with the value 2.
-    ic.poke(1,12);
-    ic.poke(2,2);
+    ic.poke(1, 12);
+    ic.poke(2, 2);
 
     ic.exe(0);
 
