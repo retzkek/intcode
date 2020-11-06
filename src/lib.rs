@@ -1,7 +1,12 @@
-use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
+
+// the fundamental type of an Intcode program, used for both addresses and
+// values (since one can easily become the other)
+type Int = i32;
 
 #[derive(Debug, PartialEq)]
 enum Operation {
@@ -29,7 +34,7 @@ trait Instruction {
     fn modes(&self) -> Vec<Mode>;
 }
 
-impl Instruction for u32 {
+impl Instruction for Int {
     fn op(&self) -> Operation {
         match self % 100 {
             99 => Operation::End,
@@ -68,7 +73,7 @@ mod test_instruction {
 
     #[test]
     fn test_op_end() {
-        let cells: Vec<u32> = vec![99, 1099, 11199];
+        let cells: Vec<Int> = vec![99, 1099, 11199];
         for c in cells {
             assert_eq!(c.op(), Operation::End, "cell value: {}", c);
         }
@@ -76,7 +81,7 @@ mod test_instruction {
 
     #[test]
     fn test_op_add() {
-        let cells: Vec<u32> = vec![1, 101, 11101];
+        let cells: Vec<Int> = vec![1, 101, 11101];
         for c in cells {
             assert_eq!(c.op(), Operation::Add, "cell value: {}", c);
         }
@@ -85,102 +90,94 @@ mod test_instruction {
     #[test]
     #[should_panic]
     fn test_op_other() {
-        let c: u32 = 10;
+        let c: Int = 10;
         c.op();
     }
 
     #[test]
     fn test_modes_000() {
-        let c: u32 = 99;
+        let c: Int = 99;
         assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Pointer])
     }
 
     #[test]
     fn test_modes_001() {
-        let c: u32 = 199;
+        let c: Int = 199;
         assert_eq!(c.modes(), vec![Mode::Value, Mode::Pointer, Mode::Pointer])
     }
 
     #[test]
     fn test_modes_100() {
-        let c: u32 = 10001;
+        let c: Int = 10001;
         assert_eq!(c.modes(), vec![Mode::Pointer, Mode::Pointer, Mode::Value])
     }
 
     #[test]
     fn test_modes_102() {
-        let c: u32 = 10209;
+        let c: Int = 10209;
         assert_eq!(c.modes(), vec![Mode::Relative, Mode::Pointer, Mode::Value])
     }
 
     #[test]
     #[should_panic]
     fn test_modes_other() {
-        let c: u32 = 399;
+        let c: Int = 399;
         c.modes();
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    code: Vec<u32>,
-    mem: HashMap<u32, u32>,
-    rel_base: u32,
-}
-
-/// Read intcode from reader.
-fn read_code<R: BufRead>(reader: R) -> Result<Vec<u32>, io::Error> {
-    let mut c: Vec<u32> = Vec::new();
-    for l in reader.lines() {
-        for s in l?.split(',') {
-            match u32::from_str(s) {
-                Ok(n) => c.push(n),
-                Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
-            };
-        }
-    }
-    Ok(c)
-    // tried to do it functionally, too hard to propogate errors!
-    // leaving this here in case I learn there's an easy way to do it.
-    //reader.lines().
-    // map(|l| l.unwrap().split(',').
-    // map(|s| u32::from_str(s).unwrap())).
-    // flatten().
-    // collect::<Vec<u32>>()
-}
-
-/// Copy Vec to HashMap, where each element's index is its key.
-fn vec_to_map<T: Copy>(code: &Vec<T>) -> HashMap<u32, T> {
-    let mut m = HashMap::new();
-    for (k, v) in (0..).zip(code.iter()) {
-        m.insert(k, v.clone());
-    }
-    m
+    code: Vec<Int>,
+    mem: Vec<Int>,
+    rel_base: Int,
 }
 
 impl Program {
     pub fn new<R: BufRead>(reader: R) -> Program {
-        let c = match read_code(reader) {
+        let c = match Program::read_code(reader) {
             Ok(x) => x,
             Err(error) => panic!["{:}", error],
         };
-        let v = vec_to_map(&c);
         Program {
-            code: c,
-            mem: v,
+            code: c.clone(),
+            mem: c,
             rel_base: 0,
         }
     }
 
-    pub fn peek(&self, addr: u32) -> u32 {
-        *self.mem.get(&addr).unwrap()
+    /// Read intcode from reader.
+    fn read_code<R: BufRead>(reader: R) -> Result<Vec<Int>, io::Error> {
+        let mut c: Vec<Int> = Vec::new();
+        for l in reader.lines() {
+            for s in l?.split(',') {
+                match Int::from_str(s) {
+                    Ok(n) => c.push(n),
+                    Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+                };
+            }
+        }
+        Ok(c)
     }
 
-    pub fn poke(&mut self, addr: u32, value: u32) -> Option<u32> {
-        self.mem.insert(addr, value)
+    pub fn peek(&self, addr: Int) -> Int {
+        let addr: usize = addr.try_into().unwrap();
+        *self.mem.get(addr).unwrap()
     }
 
-    fn pval(&self, mode: &Mode, addr: u32) -> u32 {
+    pub fn poke(&mut self, addr: Int, value: Int) -> Option<Int> {
+        let addr: usize = addr.try_into().unwrap();
+        let mut old: Option<Int> = None;
+        if addr > self.mem.len() - 1 {
+            self.mem.resize_with(addr + 1, Default::default);
+        } else {
+            old = Some(self.mem[addr]);
+        }
+        self.mem[addr] = value;
+        old
+    }
+
+    fn pval(&self, mode: &Mode, addr: Int) -> Int {
         match mode {
             Mode::Pointer => self.peek(addr),
             Mode::Value => addr,
@@ -188,7 +185,7 @@ impl Program {
         }
     }
 
-    fn paddr(&self, mode: &Mode, addr: u32) -> u32 {
+    fn paddr(&self, mode: &Mode, addr: Int) -> Int {
         match mode {
             Mode::Pointer => addr,
             Mode::Value => panic!["Value mode not valid for address"],
@@ -196,7 +193,7 @@ impl Program {
         }
     }
 
-    pub fn exe(&mut self, addr: u32) {
+    pub fn exe(&mut self, addr: Int) {
         let mut addr = addr;
         loop {
             //println!["{}: {}", addr, self.peek(addr)];
@@ -233,6 +230,12 @@ impl Program {
     }
 }
 
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.mem)
+    }
+}
+
 #[cfg(test)]
 mod test_intcode {
     use super::Program;
@@ -243,14 +246,14 @@ mod test_intcode {
     fn test_read_code() {
         let code = io::Cursor::new("1,0,0,3,1,1");
         let r = vec![1, 0, 0, 3, 1, 1];
-        assert_eq!(read_code(code).unwrap(), r)
+        assert_eq!(Program::read_code(code).unwrap(), r)
     }
 
     #[test]
     fn test_read_code_error() {
         let code = io::Cursor::new("1,0,a,3,1,1");
         assert_eq!(
-            read_code(code).map_err(|e| e.kind()),
+            Program::read_code(code).map_err(|e| e.kind()),
             Err(io::ErrorKind::InvalidData)
         )
     }
@@ -262,26 +265,7 @@ mod test_intcode {
 
         let cv = vec![1, 0, 0, 3, 1, 1];
         assert_eq!(ic.code, cv);
-
-        let mut m = HashMap::new();
-        m.insert(0, 1);
-        m.insert(1, 0);
-        m.insert(2, 0);
-        m.insert(3, 3);
-        m.insert(4, 1);
-        m.insert(5, 1);
-        assert_eq!(ic.mem, m);
-    }
-
-    #[test]
-    fn test_vec_to_map() {
-        let r = vec![1, 0, 0, 3];
-        let mut exp = HashMap::new();
-        exp.insert(0, 1);
-        exp.insert(1, 0);
-        exp.insert(2, 0);
-        exp.insert(3, 3);
-        assert_eq!(vec_to_map(&r), exp);
+        assert_eq!(ic.mem, cv);
     }
 
     #[test]

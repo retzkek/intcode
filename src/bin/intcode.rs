@@ -37,7 +37,7 @@ fn main() -> io::Result<()> {
             let mut prog = intcode::Program::new(reader);
             prog.exe(0);
             if r.print {
-                println!["{:?}", prog];
+                println!["{}", prog];
             }
         }
     };
