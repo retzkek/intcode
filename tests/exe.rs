@@ -58,3 +58,12 @@ fn test_jz() {
         .expect("execution error");
     assert_eq![output.get_ref(), b"99\n"];
 }
+
+#[test]
+fn test_rel_base() {
+    let code = io::Cursor::new("9,0,99");
+    let mut ic = Program::new(code);
+    ic.exe(0, false, &mut io::empty(), &mut io::sink())
+        .expect("execution error");
+    assert_eq![ic.rel_base(), 9];
+}

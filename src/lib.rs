@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 // the fundamental type of an Intcode program, used for both addresses and
 // values (since one can easily become the other)
-type Int = i32;
+type Int = i64;
 
 #[derive(Debug, PartialEq)]
 enum Operation {
@@ -190,6 +190,10 @@ impl Program {
         }
     }
 
+    pub fn rel_base(&self) -> Int {
+        self.rel_base
+    }
+
     pub fn exe<I: BufRead, O: Write>(
         &mut self,
         addr: Int,
@@ -285,7 +289,10 @@ impl Program {
                     );
                     addr += 4;
                 }
-                Operation::RelBase => addr += 2,
+                Operation::RelBase => {
+                    self.rel_base += self.pval(&modes[0], self.peek(addr + 1));
+                    addr += 2;
+                }
             }
         }
         Ok(())
