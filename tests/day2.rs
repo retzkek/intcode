@@ -15,8 +15,8 @@ fn main() {
     ic.poke(1, 12);
     ic.poke(2, 2);
 
-    let mut input = io::Cursor::new("");
-    ic.exe(0, false, &mut input).expect("execution error");
+    ic.exe(0, false, &mut io::empty(), &mut io::sink())
+        .expect("execution error");
 
     // What value is left at position 0 after the program halts?
     assert_eq![ic.peek(0), 4462686];

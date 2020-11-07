@@ -190,7 +190,13 @@ impl Program {
         }
     }
 
-    pub fn exe<I: BufRead>(&mut self, addr: Int, trace: bool, input: I) -> io::Result<()> {
+    pub fn exe<I: BufRead, O: Write>(
+        &mut self,
+        addr: Int,
+        trace: bool,
+        input: I,
+        output: &mut O,
+    ) -> io::Result<()> {
         let mut addr = addr;
         let mut input_lines = input.lines();
         loop {
@@ -209,7 +215,7 @@ impl Program {
                             + self.pval(&modes[1], self.peek(addr + 2)),
                     );
                     addr += 4;
-                },
+                }
                 Operation::Mul => {
                     self.poke(
                         self.paddr(&modes[2], self.peek(addr + 3)),
@@ -217,19 +223,28 @@ impl Program {
                             * self.pval(&modes[1], self.peek(addr + 2)),
                     );
                     addr += 4;
-                },
+                }
                 Operation::Input => {
-                    let s = input_lines.next()
-                                       .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no more data to read"))??;
+                    output.write_all(b"?")?;
+                    output.flush()?;
+                    let s = input_lines.next().ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "no more data to read")
+                    })??;
                     self.poke(
                         self.paddr(&modes[0], self.peek(addr + 1)),
                         match Int::from_str(&s) {
-                        Ok(n) => n,
-                        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
-                    });
+                            Ok(n) => n,
+                            Err(error) => {
+                                return Err(io::Error::new(io::ErrorKind::InvalidData, error))
+                            }
+                        },
+                    );
                     addr += 2;
-                },
-                Operation::Output => addr += 2,
+                }
+                Operation::Output => {
+                    writeln!(output, "{}", self.pval(&modes[0], self.peek(addr + 1)))?;
+                    addr += 2;
+                }
                 Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
                 Operation::JumpEq => panic!["JumpEq not implemented"],
                 Operation::LessThan => addr += 4,
