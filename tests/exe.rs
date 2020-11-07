@@ -30,6 +30,17 @@ fn test_input() {
 }
 
 #[test]
+fn test_input2() {
+    let code = io::Cursor::new("3,0,3,4,0");
+    let mut ic = Program::new(code);
+    let mut input = io::Cursor::new("-1\n99\n");
+    ic.exe(0, false, &mut input, &mut io::sink())
+        .expect("execution error");
+    assert_eq![ic.peek(0), -1];
+    assert_eq![ic.peek(4), 99];
+}
+
+#[test]
 fn test_output() {
     let code = io::Cursor::new("4,2,99");
     let mut ic = Program::new(code);

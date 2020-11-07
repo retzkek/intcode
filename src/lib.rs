@@ -4,6 +4,8 @@ use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
 
+pub mod permutations;
+
 // the fundamental type of an Intcode program, used for both addresses and
 // values (since one can easily become the other)
 type Int = i64;
@@ -127,6 +129,7 @@ mod test_instruction {
 }
 
 pub struct Program {
+    source: Vec<Int>,
     mem: Vec<Int>,
     rel_base: Int,
 }
@@ -138,6 +141,7 @@ impl Program {
             Err(error) => panic!["{:}", error],
         };
         Program {
+            source: c.clone(),
             mem: c,
             rel_base: 0,
         }
@@ -155,6 +159,11 @@ impl Program {
             }
         }
         Ok(c)
+    }
+
+    /// Reset program memory to source.
+    pub fn reset(&mut self) {
+        self.mem = self.source.clone();
     }
 
     pub fn peek(&self, addr: Int) -> Int {
@@ -208,7 +217,7 @@ impl Program {
             let op = v.op();
             let modes = v.modes();
             if trace {
-                println!["{}: {} ({:?})", addr, v, op];
+                eprintln!["{}: {} ({:?})", addr, v, op];
             }
             match op {
                 Operation::End => break,
@@ -234,6 +243,9 @@ impl Program {
                     let s = input_lines.next().ok_or_else(|| {
                         io::Error::new(io::ErrorKind::InvalidData, "no more data to read")
                     })??;
+                    if trace {
+                        eprintln!["input data: \"{}\"", s];
+                    }
                     self.poke(
                         self.paddr(&modes[0], self.peek(addr + 1)),
                         match Int::from_str(&s) {
@@ -246,6 +258,12 @@ impl Program {
                     addr += 2;
                 }
                 Operation::Output => {
+                    if trace {
+                        eprintln![
+                            "output data: \"{}\"",
+                            self.pval(&modes[0], self.peek(addr + 1))
+                        ];
+                    }
                     writeln!(output, "{}", self.pval(&modes[0], self.peek(addr + 1)))?;
                     addr += 2;
                 }
@@ -350,6 +368,17 @@ mod test_intcode {
         assert_eq!(ic.peek(3), 3);
         assert_eq!(ic.poke(3, 5).unwrap(), 3);
         assert_eq!(ic.peek(3), 5);
+    }
+
+    #[test]
+    fn test_reset() {
+        let code = io::Cursor::new("1,0,0,3,1,1");
+        let mut ic = Program::new(code);
+        assert_eq!(ic.peek(3), 3);
+        assert_eq!(ic.poke(3, 5).unwrap(), 3);
+        assert_eq!(ic.peek(3), 5);
+        ic.reset();
+        assert_eq!(ic.peek(3), 3);
     }
 
     #[test]
