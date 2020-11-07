@@ -15,8 +15,8 @@ enum Operation {
     Mul,
     Input,
     Output,
-    JumpNotEq,
-    JumpEq,
+    JumpNotZero,
+    JumpZero,
     LessThan,
     EqualTo,
     RelBase,
@@ -42,8 +42,8 @@ impl Instruction for Int {
             2 => Operation::Mul,
             3 => Operation::Input,
             4 => Operation::Output,
-            5 => Operation::JumpNotEq,
-            6 => Operation::JumpEq,
+            5 => Operation::JumpNotZero,
+            6 => Operation::JumpZero,
             7 => Operation::LessThan,
             8 => Operation::EqualTo,
             9 => Operation::RelBase,
@@ -61,7 +61,7 @@ impl Instruction for Int {
                 2 => Mode::Relative,
                 _ => panic!["unknown mode {}", r],
             });
-            r = r / 10;
+            r /= 10;
         }
         m
     }
@@ -245,8 +245,20 @@ impl Program {
                     writeln!(output, "{}", self.pval(&modes[0], self.peek(addr + 1)))?;
                     addr += 2;
                 }
-                Operation::JumpNotEq => panic!["JumpNotEq not implemented"],
-                Operation::JumpEq => panic!["JumpEq not implemented"],
+                Operation::JumpNotZero => {
+                    if self.pval(&modes[0], self.peek(addr + 1)) != 0 {
+                        addr = self.pval(&modes[1], self.peek(addr + 2));
+                    } else {
+                        addr += 3;
+                    }
+                }
+                Operation::JumpZero => {
+                    if self.pval(&modes[0], self.peek(addr + 1)) == 0 {
+                        addr = self.pval(&modes[1], self.peek(addr + 2));
+                    } else {
+                        addr += 3;
+                    }
+                }
                 Operation::LessThan => addr += 4,
                 Operation::EqualTo => addr += 4,
                 Operation::RelBase => addr += 2,

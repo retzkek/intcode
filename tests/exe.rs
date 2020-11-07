@@ -38,3 +38,23 @@ fn test_output() {
         .expect("execution error");
     assert_eq![output.get_ref(), b"99\n"];
 }
+
+#[test]
+fn test_jnz() {
+    let code = io::Cursor::new("5,0,4,99,4,6,99");
+    let mut ic = Program::new(code);
+    let mut output = io::Cursor::new(vec![0; 3]);
+    ic.exe(0, false, &mut io::empty(), &mut output)
+        .expect("execution error");
+    assert_eq![output.get_ref(), b"99\n"];
+}
+
+#[test]
+fn test_jz() {
+    let code = io::Cursor::new("106,0,4,99,4,6,99");
+    let mut ic = Program::new(code);
+    let mut output = io::Cursor::new(vec![0; 3]);
+    ic.exe(0, false, &mut io::empty(), &mut output)
+        .expect("execution error");
+    assert_eq![output.get_ref(), b"99\n"];
+}
