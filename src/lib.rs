@@ -259,8 +259,32 @@ impl Program {
                         addr += 3;
                     }
                 }
-                Operation::LessThan => addr += 4,
-                Operation::EqualTo => addr += 4,
+                Operation::LessThan => {
+                    self.poke(
+                        self.paddr(&modes[2], self.peek(addr + 3)),
+                        if self.pval(&modes[0], self.peek(addr + 1))
+                            < self.pval(&modes[1], self.peek(addr + 2))
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    );
+                    addr += 4;
+                }
+                Operation::EqualTo => {
+                    self.poke(
+                        self.paddr(&modes[2], self.peek(addr + 3)),
+                        if self.pval(&modes[0], self.peek(addr + 1))
+                            == self.pval(&modes[1], self.peek(addr + 2))
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    );
+                    addr += 4;
+                }
                 Operation::RelBase => addr += 2,
             }
         }
