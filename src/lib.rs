@@ -152,10 +152,12 @@ impl Program {
         let mut c: Vec<Int> = Vec::new();
         for l in reader.lines() {
             for s in l?.split(',') {
-                match Int::from_str(s) {
-                    Ok(n) => c.push(n),
-                    Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
-                };
+                if s.len() > 0 {
+                    match Int::from_str(s) {
+                        Ok(n) => c.push(n),
+                        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+                    };
+                }
             }
         }
         Ok(c)
@@ -343,6 +345,14 @@ mod test_intcode {
             Program::read_code(code).map_err(|e| e.kind()),
             Err(io::ErrorKind::InvalidData)
         )
+    }
+
+    #[test]
+    fn test_read_newline() {
+        let code = io::Cursor::new("1,0,0,
+3,1,1");
+        let r = vec![1, 0, 0, 3, 1, 1];
+        assert_eq!(Program::read_code(code).unwrap(), r)
     }
 
     #[test]
