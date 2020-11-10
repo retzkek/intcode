@@ -3,12 +3,13 @@ use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::str::FromStr;
+use std::sync::mpsc::{Receiver, Sender};
 
 pub mod permutations;
 
 // the fundamental type of an Intcode program, used for both addresses and
 // values (since one can easily become the other)
-type Int = i64;
+pub type Int = i64;
 
 #[derive(Debug, PartialEq)]
 enum Operation {
@@ -128,6 +129,18 @@ mod test_instruction {
     }
 }
 
+pub enum Input<'a> {
+    None,
+    Reader(&'a mut dyn BufRead),
+    Channel(Receiver<Int>),
+}
+
+pub enum Output<'a> {
+    None,
+    Writer(&'a mut dyn Write),
+    Channel(Sender<Int>),
+}
+
 pub struct Program {
     source: Vec<Int>,
     mem: Vec<Int>,
@@ -155,7 +168,9 @@ impl Program {
                 if s.len() > 0 {
                     match Int::from_str(s) {
                         Ok(n) => c.push(n),
-                        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+                        Err(error) => {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData, error))
+                        }
                     };
                 }
             }
@@ -205,15 +220,14 @@ impl Program {
         self.rel_base
     }
 
-    pub fn exe<I: BufRead, O: Write>(
+    pub fn exe(
         &mut self,
         addr: Int,
         trace: bool,
-        input: I,
-        output: &mut O,
+        mut input: Input,
+        mut output: Output,
     ) -> io::Result<()> {
         let mut addr = addr;
-        let mut input_lines = input.lines();
         loop {
             let v = self.peek(addr);
             let op = v.op();
@@ -240,33 +254,49 @@ impl Program {
                     addr += 4;
                 }
                 Operation::Input => {
-                    output.write_all(b"?")?;
-                    output.flush()?;
-                    let s = input_lines.next().ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "no more data to read")
-                    })??;
-                    if trace {
-                        eprintln!["input data: \"{}\"", s];
-                    }
-                    self.poke(
-                        self.paddr(&modes[0], self.peek(addr + 1)),
-                        match Int::from_str(&s) {
-                            Ok(n) => n,
-                            Err(error) => {
-                                return Err(io::Error::new(io::ErrorKind::InvalidData, error))
+                    let i = match input {
+                        Input::Reader(ref mut r) => {
+                            if let Output::Writer(ref mut w) = output {
+                                w.write_all(b"?")?;
+                                w.flush()?;
                             }
-                        },
-                    );
+                            let mut s = String::new();
+                            r.read_line(&mut s)?;
+                            match Int::from_str(&s.trim()) {
+                                Ok(n) => n,
+                                Err(error) => {
+                                    return Err(io::Error::new(io::ErrorKind::InvalidData, error))
+                                }
+                            }
+                        }
+                        Input::Channel(ref c) => c.recv().unwrap(),
+                        Input::None => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "input required but no input channel provided",
+                            ));
+                        }
+                    };
+                    if trace {
+                        eprintln!["input data: \"{}\"", i];
+                    }
+                    self.poke(self.paddr(&modes[0], self.peek(addr + 1)), i);
                     addr += 2;
                 }
                 Operation::Output => {
+                    let o = self.pval(&modes[0], self.peek(addr + 1));
                     if trace {
-                        eprintln![
-                            "output data: \"{}\"",
-                            self.pval(&modes[0], self.peek(addr + 1))
-                        ];
+                        eprintln!["output data: \"{}\"", o];
                     }
-                    writeln!(output, "{}", self.pval(&modes[0], self.peek(addr + 1)))?;
+                    match output {
+                        Output::Writer(ref mut w) => {
+                            writeln!(w, "{}", o)?;
+                        }
+                        Output::Channel(ref c) => {
+                            c.send(o).unwrap();
+                        }
+                        Output::None => {}
+                    }
                     addr += 2;
                 }
                 Operation::JumpNotZero => {
@@ -349,8 +379,10 @@ mod test_intcode {
 
     #[test]
     fn test_read_newline() {
-        let code = io::Cursor::new("1,0,0,
-3,1,1");
+        let code = io::Cursor::new(
+            "1,0,0,
+3,1,1",
+        );
         let r = vec![1, 0, 0, 3, 1, 1];
         assert_eq!(Program::read_code(code).unwrap(), r)
     }

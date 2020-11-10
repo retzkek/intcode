@@ -38,7 +38,12 @@ fn main() -> io::Result<()> {
             let f = File::open(r.filename)?;
             let reader = io::BufReader::new(f);
             let mut prog = intcode::Program::new(reader);
-            prog.exe(0, r.trace, io::stdin().lock(), &mut io::stdout().lock())?;
+            prog.exe(
+                0,
+                r.trace,
+                intcode::Input::Reader(&mut io::stdin().lock()),
+                intcode::Output::Writer(&mut io::stdout().lock()),
+            )?;
             if r.print {
                 println!["{}", prog];
             }

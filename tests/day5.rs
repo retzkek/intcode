@@ -1,17 +1,18 @@
 //! AoC 2019 day 5: https://adventofcode.com/2019/day/5
 
 extern crate intcode;
+use intcode::{Input, Output, Program};
 use std::fs::File;
 use std::io;
 
 fn run_day5(input: &[u8], output: &[u8]) {
     let f = File::open("input/day5.int").unwrap();
     let reader = io::BufReader::new(f);
-    let mut ic = intcode::Program::new(reader);
+    let mut ic = Program::new(reader);
     let mut inc = io::Cursor::new(input);
     let mut outc = io::Cursor::new(vec![0; output.len()]);
 
-    ic.exe(0, false, &mut inc, &mut outc)
+    ic.exe(0, false, Input::Reader(&mut inc), Output::Writer(&mut outc))
         .expect("execution error");
     assert_eq![outc.get_ref().as_slice(), output];
 }
