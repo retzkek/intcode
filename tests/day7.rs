@@ -10,12 +10,6 @@ use std::io::Write;
 use std::str::FromStr;
 use std::sync::mpsc::channel;
 
-fn strip_output(output: &[u8]) -> &[u8] {
-    let e = output.iter().position(|&x| x == b'\0').unwrap();
-    // there will be two ? at the front, and \n at the end
-    &output[2..e - 1]
-}
-
 fn amp(program: &mut Program, phases: &[Int]) -> i64 {
     let mut sig: Int = 0;
     for p in phases.iter() {
@@ -54,21 +48,20 @@ fn test_amp_3() {
     assert_eq![amp(&mut ic, &vec![1, 0, 4, 3, 2]), 65210];
 }
 
-// TODO reimplement generic Permutator
-// #[test]
-// fn part1() {
-//     let f = File::open("input/day7.int").unwrap();
-//     let reader = io::BufReader::new(f);
-//     let mut ic = Program::new(reader);
+#[test]
+fn part1() {
+    let f = File::open("input/day7.int").unwrap();
+    let reader = io::BufReader::new(f);
+    let mut ic = Program::new(reader);
 
-//     let p = Permutator::new(b"01234");
-//     let mut max = 0;
-//     for pp in p {
-//         let sig = amp(&mut ic, &pp);
-//         if sig > max {
-//             max = sig;
-//         }
-//         eprintln!["{:?}: {}", pp, sig];
-//     }
-//     assert_eq![max, 567045];
-// }
+    let p = Permutator::new(&vec![0,1,2,3,4]);
+    let mut max = 0;
+    for pp in p {
+        let sig = amp(&mut ic, &pp);
+        if sig > max {
+            max = sig;
+        }
+        eprintln!["{:?}: {}", pp, sig];
+    }
+    assert_eq![max, 567045];
+}

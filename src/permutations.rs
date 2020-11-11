@@ -1,15 +1,14 @@
 /// implementation of Heap's algorithm
 /// https://en.wikipedia.org/wiki/Heap%27s_algorithm
-/// TODO: make generic
-pub struct Permutator {
-    last: Vec<u8>,
+pub struct Permutator<T> {
+    last: Vec<T>,
     i: usize,
     state: Vec<usize>,
     count: usize,
 }
 
-impl Permutator {
-    pub fn new(v: &[u8]) -> Permutator {
+impl<T: Clone> Permutator<T> {
+    pub fn new(v: &[T]) -> Permutator<T> {
         Permutator {
             last: v.to_vec(),
             i: 0,
@@ -19,8 +18,8 @@ impl Permutator {
     }
 }
 
-impl Iterator for Permutator {
-    type Item = Vec<u8>;
+impl<T: Clone> Iterator for Permutator<T> {
+    type Item = Vec<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.count += 1;
@@ -38,13 +37,9 @@ impl Iterator for Permutator {
             }
         }
         if self.i % 2 == 0 {
-            let b = self.last[0];
-            self.last[0] = self.last[self.i];
-            self.last[self.i] = b;
+            self.last.swap(self.i, 0);
         } else {
-            let b = self.last[self.state[self.i]];
-            self.last[self.state[self.i]] = self.last[self.i];
-            self.last[self.i] = b;
+            self.last.swap(self.state[self.i], self.i);
         }
         self.state[self.i] += 1;
         self.i = 0;
