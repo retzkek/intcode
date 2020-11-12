@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 
+mod debugger;
 pub mod permutations;
 
 // the fundamental type of an Intcode program, used for both addresses and
@@ -346,6 +347,10 @@ impl Program {
             }
         }
         Ok(())
+    }
+
+    pub fn debug(&mut self) -> io::Result<()> {
+        debugger::debug(self)
     }
 }
 
