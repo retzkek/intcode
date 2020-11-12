@@ -43,6 +43,27 @@ impl Operation {
     }
 }
 
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:3}",
+            match self {
+                Operation::End => "END",
+                Operation::Add => "ADD",
+                Operation::Mul => "MUL",
+                Operation::Input => "INP",
+                Operation::Output => "OUT",
+                Operation::JumpNotZero => "JNZ",
+                Operation::JumpZero => "JZ",
+                Operation::LessThan => "LT",
+                Operation::EqualTo => "EQ",
+                Operation::RelBase => "REL",
+            }
+        )
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Mode {
     Pointer,
@@ -160,10 +181,17 @@ pub enum Output<'a> {
 }
 
 #[derive(Clone)]
+pub struct StackEntry {
+    address: Int,
+    value: Int,
+}
+
+#[derive(Clone)]
 pub struct Program {
     source: Vec<Int>,
     mem: Vec<Int>,
     rel_base: Int,
+    stack: Vec<StackEntry>,
 }
 
 impl Program {
@@ -176,6 +204,7 @@ impl Program {
             source: c.clone(),
             mem: c,
             rel_base: 0,
+            stack: Vec::new(),
         }
     }
 
@@ -264,122 +293,126 @@ impl Program {
         input: &mut Input,
         output: &mut Output,
     ) -> io::Result<Int> {
-        let mut addr = addr ;
-            let v = self.peek(addr);
-            let op = v.op();
-            let modes = v.modes();
-            if trace {
-                eprintln!["{}: {} ({:?})", addr, v, op];
+        let mut addr = addr;
+        let v = self.peek(addr);
+        let op = v.op();
+        let modes = v.modes();
+        self.stack.push(StackEntry {
+            address: addr,
+            value: v,
+        });
+        if trace {
+            eprintln!["{}: {} ({:?})", addr, v, op];
+        }
+        match op {
+            Operation::End => return Ok(-1),
+            Operation::Add => {
+                self.poke(
+                    self.paddr(&modes[2], self.peek(addr + 3)),
+                    self.pval(&modes[0], self.peek(addr + 1))
+                        + self.pval(&modes[1], self.peek(addr + 2)),
+                );
+                addr += 4;
             }
-            match op {
-                Operation::End => return Ok(-1),
-                Operation::Add => {
-                    self.poke(
-                        self.paddr(&modes[2], self.peek(addr + 3)),
-                        self.pval(&modes[0], self.peek(addr + 1))
-                            + self.pval(&modes[1], self.peek(addr + 2)),
-                    );
-                    addr += 4;
-                }
-                Operation::Mul => {
-                    self.poke(
-                        self.paddr(&modes[2], self.peek(addr + 3)),
-                        self.pval(&modes[0], self.peek(addr + 1))
-                            * self.pval(&modes[1], self.peek(addr + 2)),
-                    );
-                    addr += 4;
-                }
-                Operation::Input => {
-                    let i = match input {
-                        Input::Reader(ref mut r) => {
-                            if let Output::Writer(ref mut w) = output {
-                                w.write_all(b"?")?;
-                                w.flush()?;
-                            }
-                            let mut s = String::new();
-                            r.read_line(&mut s)?;
-                            match Int::from_str(&s.trim()) {
-                                Ok(n) => n,
-                                Err(error) => {
-                                    return Err(io::Error::new(io::ErrorKind::InvalidData, error))
-                                }
+            Operation::Mul => {
+                self.poke(
+                    self.paddr(&modes[2], self.peek(addr + 3)),
+                    self.pval(&modes[0], self.peek(addr + 1))
+                        * self.pval(&modes[1], self.peek(addr + 2)),
+                );
+                addr += 4;
+            }
+            Operation::Input => {
+                let i = match input {
+                    Input::Reader(ref mut r) => {
+                        if let Output::Writer(ref mut w) = output {
+                            w.write_all(b"?")?;
+                            w.flush()?;
+                        }
+                        let mut s = String::new();
+                        r.read_line(&mut s)?;
+                        match Int::from_str(&s.trim()) {
+                            Ok(n) => n,
+                            Err(error) => {
+                                return Err(io::Error::new(io::ErrorKind::InvalidData, error))
                             }
                         }
-                        Input::Channel(ref c) => c.recv().unwrap(),
-                        Input::None => {
-                            return Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "input required but no input channel provided",
-                            ));
-                        }
-                    };
-                    if trace {
-                        eprintln!["input data: \"{}\"", i];
                     }
-                    self.poke(self.paddr(&modes[0], self.peek(addr + 1)), i);
-                    addr += 2;
-                }
-                Operation::Output => {
-                    let o = self.pval(&modes[0], self.peek(addr + 1));
-                    if trace {
-                        eprintln!["output data: \"{}\"", o];
+                    Input::Channel(ref c) => c.recv().unwrap(),
+                    Input::None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "input required but no input channel provided",
+                        ));
                     }
-                    match output {
-                        Output::Writer(ref mut w) => {
-                            writeln!(w, "{}", o)?;
-                        }
-                        Output::Channel(ref c) => {
-                            c.send(o).unwrap();
-                        }
-                        Output::None => {}
+                };
+                if trace {
+                    eprintln!["input data: \"{}\"", i];
+                }
+                self.poke(self.paddr(&modes[0], self.peek(addr + 1)), i);
+                addr += 2;
+            }
+            Operation::Output => {
+                let o = self.pval(&modes[0], self.peek(addr + 1));
+                if trace {
+                    eprintln!["output data: \"{}\"", o];
+                }
+                match output {
+                    Output::Writer(ref mut w) => {
+                        writeln!(w, "{}", o)?;
                     }
-                    addr += 2;
-                }
-                Operation::JumpNotZero => {
-                    if self.pval(&modes[0], self.peek(addr + 1)) != 0 {
-                        addr = self.pval(&modes[1], self.peek(addr + 2));
-                    } else {
-                        addr += 3;
+                    Output::Channel(ref c) => {
+                        c.send(o).unwrap();
                     }
+                    Output::None => {}
                 }
-                Operation::JumpZero => {
-                    if self.pval(&modes[0], self.peek(addr + 1)) == 0 {
-                        addr = self.pval(&modes[1], self.peek(addr + 2));
-                    } else {
-                        addr += 3;
-                    }
-                }
-                Operation::LessThan => {
-                    self.poke(
-                        self.paddr(&modes[2], self.peek(addr + 3)),
-                        if self.pval(&modes[0], self.peek(addr + 1))
-                            < self.pval(&modes[1], self.peek(addr + 2))
-                        {
-                            1
-                        } else {
-                            0
-                        },
-                    );
-                    addr += 4;
-                }
-                Operation::EqualTo => {
-                    self.poke(
-                        self.paddr(&modes[2], self.peek(addr + 3)),
-                        if self.pval(&modes[0], self.peek(addr + 1))
-                            == self.pval(&modes[1], self.peek(addr + 2))
-                        {
-                            1
-                        } else {
-                            0
-                        },
-                    );
-                    addr += 4;
-                }
-                Operation::RelBase => {
-                    self.rel_base += self.pval(&modes[0], self.peek(addr + 1));
-                    addr += 2;
+                addr += 2;
+            }
+            Operation::JumpNotZero => {
+                if self.pval(&modes[0], self.peek(addr + 1)) != 0 {
+                    addr = self.pval(&modes[1], self.peek(addr + 2));
+                } else {
+                    addr += 3;
                 }
             }
+            Operation::JumpZero => {
+                if self.pval(&modes[0], self.peek(addr + 1)) == 0 {
+                    addr = self.pval(&modes[1], self.peek(addr + 2));
+                } else {
+                    addr += 3;
+                }
+            }
+            Operation::LessThan => {
+                self.poke(
+                    self.paddr(&modes[2], self.peek(addr + 3)),
+                    if self.pval(&modes[0], self.peek(addr + 1))
+                        < self.pval(&modes[1], self.peek(addr + 2))
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                );
+                addr += 4;
+            }
+            Operation::EqualTo => {
+                self.poke(
+                    self.paddr(&modes[2], self.peek(addr + 3)),
+                    if self.pval(&modes[0], self.peek(addr + 1))
+                        == self.pval(&modes[1], self.peek(addr + 2))
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                );
+                addr += 4;
+            }
+            Operation::RelBase => {
+                self.rel_base += self.pval(&modes[0], self.peek(addr + 1));
+                addr += 2;
+            }
+        }
         Ok(addr)
     }
 }
