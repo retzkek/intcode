@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 argh = "0.1.4"
-cursive = "0.15.0"
+tui = "0.12"
+termion = "1.5"
