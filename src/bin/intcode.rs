@@ -14,6 +14,7 @@ struct Args {
 #[argh(subcommand)]
 enum Subcommand {
     Run(CommandRun),
+    Debug(CommandDebug),
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -29,6 +30,15 @@ struct CommandRun {
     #[argh(switch, short = 'p')]
     /// print final memory status
     print: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// interactively debug program
+#[argh(subcommand, name = "debug")]
+struct CommandDebug {
+    #[argh(positional)]
+    /// source code file
+    filename: String,
 }
 
 fn main() -> io::Result<()> {
@@ -47,6 +57,12 @@ fn main() -> io::Result<()> {
             if r.print {
                 println!["{}", prog];
             }
+        }
+        Subcommand::Debug(r) => {
+            let f = File::open(r.filename)?;
+            let reader = io::BufReader::new(f);
+            let prog = intcode::Program::new(reader);
+            intcode::debugger::debug(prog)?;
         }
     };
     Ok(())

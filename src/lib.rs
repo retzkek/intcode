@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 
+pub mod debugger;
 pub mod permutations;
 
 // the fundamental type of an Intcode program, used for both addresses and
@@ -23,6 +24,23 @@ enum Operation {
     LessThan,
     EqualTo,
     RelBase,
+}
+
+impl Operation {
+    pub fn len(&self) -> usize {
+        match self {
+            Operation::End => 1,
+            Operation::Add => 4,
+            Operation::Mul => 4,
+            Operation::Input => 2,
+            Operation::Output => 2,
+            Operation::JumpNotZero => 3,
+            Operation::JumpZero => 3,
+            Operation::LessThan => 4,
+            Operation::EqualTo => 4,
+            Operation::RelBase => 2,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,6 +159,7 @@ pub enum Output<'a> {
     Channel(Sender<Int>),
 }
 
+#[derive(Clone)]
 pub struct Program {
     source: Vec<Int>,
     mem: Vec<Int>,
@@ -229,6 +248,23 @@ impl Program {
     ) -> io::Result<()> {
         let mut addr = addr;
         loop {
+            match self.step(addr, trace, &mut input, &mut output) {
+                Ok(-1) => break,
+                Ok(r) => addr = r,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn step(
+        &mut self,
+        addr: Int,
+        trace: bool,
+        input: &mut Input,
+        output: &mut Output,
+    ) -> io::Result<Int> {
+        let mut addr = addr ;
             let v = self.peek(addr);
             let op = v.op();
             let modes = v.modes();
@@ -236,7 +272,7 @@ impl Program {
                 eprintln!["{}: {} ({:?})", addr, v, op];
             }
             match op {
-                Operation::End => break,
+                Operation::End => return Ok(-1),
                 Operation::Add => {
                     self.poke(
                         self.paddr(&modes[2], self.peek(addr + 3)),
@@ -344,8 +380,7 @@ impl Program {
                     addr += 2;
                 }
             }
-        }
-        Ok(())
+        Ok(addr)
     }
 }
 

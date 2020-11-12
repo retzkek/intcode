@@ -54,7 +54,7 @@ fn part1() {
     let reader = io::BufReader::new(f);
     let mut ic = Program::new(reader);
 
-    let p = Permutator::new(&vec![0,1,2,3,4]);
+    let p = Permutator::new(&vec![0, 1, 2, 3, 4]);
     let mut max = 0;
     for pp in p {
         let sig = amp(&mut ic, &pp);
