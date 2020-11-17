@@ -170,6 +170,7 @@ mod test_instruction {
 
 pub enum Input<'a> {
     None,
+    String(&'a str),
     Reader(&'a mut dyn BufRead),
     Channel(Receiver<Int>),
 }
@@ -324,6 +325,12 @@ impl Program {
             }
             Operation::Input => {
                 let i = match input {
+                    Input::String(s) => match Int::from_str(&s.trim()) {
+                        Ok(n) => n,
+                        Err(error) => {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData, error))
+                        }
+                    },
                     Input::Reader(ref mut r) => {
                         if let Output::Writer(ref mut w) = output {
                             w.write_all(b"?")?;

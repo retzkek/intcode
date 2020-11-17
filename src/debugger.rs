@@ -1,8 +1,10 @@
-use super::{Input, Instruction, Int, Output, Program};
+use super::{Input, Instruction, Int, Operation, Output, Program};
 use cursive::theme::{Effect, Style};
 use cursive::utils::markup::StyledString;
 use cursive::view::{scroll::ScrollStrategy, Nameable, SizeConstraint};
-use cursive::views::{Dialog, LinearLayout, Panel, ResizedView, ScrollView, TextContent, TextView};
+use cursive::views::{
+    Dialog, EditView, LinearLayout, Panel, ResizedView, ScrollView, TextContent, TextView,
+};
 use cursive::Cursive;
 use std::io;
 
@@ -12,6 +14,10 @@ struct Debugger {
 }
 
 impl Debugger {
+    pub fn cur_val(&self) -> Int {
+        self.program.peek(self.cur_addr as Int)
+    }
+
     fn cur_len(&self) -> usize {
         self.program.peek(self.cur_addr as Int).op().len()
     }
@@ -56,6 +62,31 @@ impl Debugger {
             Err(e) => eprintln!("{}", e),
         };
     }
+
+    pub fn step_input(&mut self, input: &str) {
+        match self.program.step(
+            self.cur_addr as Int,
+            false,
+            &mut Input::String(input),
+            &mut Output::None,
+        ) {
+            Ok(-1) => {}
+            Ok(r) => self.cur_addr = r as usize,
+            Err(e) => eprintln!("{}", e),
+        };
+    }
+}
+
+fn update(siv: &mut Cursive) {
+    let d = siv.user_data::<Debugger>().unwrap();
+    let code = d.code_string();
+    let stack = d.stack_string();
+    siv.call_on_name("code", |v: &mut TextView| {
+        v.set_content(code);
+    });
+    siv.call_on_name("stack", |v: &mut TextView| {
+        v.set_content(stack);
+    });
 }
 
 pub fn debug(prog: Program) -> io::Result<()> {
@@ -68,15 +99,36 @@ pub fn debug(prog: Program) -> io::Result<()> {
     siv.add_global_callback('q', |s| s.quit());
     siv.add_global_callback('n', |s| {
         let d = s.user_data::<Debugger>().unwrap();
-        d.step();
-        let code = d.code_string();
-        let stack = d.stack_string();
-        s.call_on_name("code", |v: &mut TextView| {
-            v.set_content(code);
-        });
-        s.call_on_name("stack", |v: &mut TextView| {
-            v.set_content(stack);
-        });
+        let v = d.cur_val();
+        if v.op() == Operation::Input {
+            s.add_layer(
+                Dialog::new()
+                    .title("Input")
+                    .padding_lrtb(1, 1, 1, 0)
+                    .content(
+                        EditView::new()
+                            .on_submit(|s, input| {
+                                let d = s.user_data::<Debugger>().unwrap();
+                                d.step_input(input);
+                                s.pop_layer();
+                                update(s);
+                            })
+                            .with_name("input"),
+                    )
+                    .button("Ok", |s| {
+                        let input = s
+                            .call_on_name("input", |view: &mut EditView| view.get_content())
+                            .unwrap();
+                        let d = s.user_data::<Debugger>().unwrap();
+                        d.step_input(&input);
+                        s.pop_layer();
+                        update(s);
+                    }),
+            );
+        } else {
+            d.step();
+        }
+        update(s);
     });
 
     siv.add_fullscreen_layer(
