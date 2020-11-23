@@ -177,6 +177,7 @@ pub enum Input<'a> {
 
 pub enum Output<'a> {
     None,
+    String(&'a mut str),
     Writer(&'a mut dyn Write),
     Channel(Sender<Int>),
 }
@@ -365,6 +366,9 @@ impl Program {
                     eprintln!["output data: \"{}\"", o];
                 }
                 match output {
+                    Output::String(mut s) => {
+                        s = format!["{}", o];
+                    }
                     Output::Writer(ref mut w) => {
                         writeln!(w, "{}", o)?;
                     }

@@ -75,6 +75,21 @@ impl Debugger {
             Err(e) => eprintln!("{}", e),
         };
     }
+
+    pub fn step_output(&mut self) -> &str {
+        let mut output = "";
+        match self.program.step(
+            self.cur_addr as Int,
+            false,
+            &mut Input::None,
+            &mut Output::String(&mut output),
+        ) {
+            Ok(-1) => {}
+            Ok(r) => self.cur_addr = r as usize,
+            Err(e) => eprintln!("{}", e),
+        };
+        output
+    }
 }
 
 fn update(siv: &mut Cursive) {
@@ -100,33 +115,40 @@ pub fn debug(prog: Program) -> io::Result<()> {
     siv.add_global_callback('n', |s| {
         let d = s.user_data::<Debugger>().unwrap();
         let v = d.cur_val();
-        if v.op() == Operation::Input {
-            s.add_layer(
-                Dialog::new()
-                    .title("Input")
-                    .padding_lrtb(1, 1, 1, 0)
-                    .content(
-                        EditView::new()
-                            .on_submit(|s, input| {
-                                let d = s.user_data::<Debugger>().unwrap();
-                                d.step_input(input);
-                                s.pop_layer();
-                                update(s);
-                            })
-                            .with_name("input"),
-                    )
-                    .button("Ok", |s| {
-                        let input = s
-                            .call_on_name("input", |view: &mut EditView| view.get_content())
-                            .unwrap();
-                        let d = s.user_data::<Debugger>().unwrap();
-                        d.step_input(&input);
-                        s.pop_layer();
-                        update(s);
-                    }),
-            );
-        } else {
-            d.step();
+        match v.op() {
+            Operation::Input => {
+                s.add_layer(
+                    Dialog::new()
+                        .title("Input")
+                        .padding_lrtb(1, 1, 1, 0)
+                        .content(
+                            EditView::new()
+                                .on_submit(|s, input| {
+                                    let d = s.user_data::<Debugger>().unwrap();
+                                    d.step_input(input);
+                                    s.pop_layer();
+                                    update(s);
+                                })
+                                .with_name("input"),
+                        )
+                        .button("Ok", |s| {
+                            let input = s
+                                .call_on_name("input", |view: &mut EditView| view.get_content())
+                                .unwrap();
+                            let d = s.user_data::<Debugger>().unwrap();
+                            d.step_input(&input);
+                            s.pop_layer();
+                            update(s);
+                        }),
+                );
+            }
+            Operation::Output => {
+                let output = d.step_output();
+                siv.call_on_name("output", |v: &mut TextView| {
+                    v.set_content(output);
+                });
+            }
+            _ => d.step(),
         }
         update(s);
     });
@@ -154,7 +176,9 @@ pub fn debug(prog: Program) -> io::Result<()> {
                     .child(ResizedView::new(
                         SizeConstraint::Full,
                         SizeConstraint::Full,
-                        Panel::new(TextView::new("[TODO]")).title("Instruction"),
+                        Panel::new(TextView::new("[empty]"))
+                            .with_name("output")
+                            .title("Output"),
                     )),
             ))
             .child(ResizedView::new(
